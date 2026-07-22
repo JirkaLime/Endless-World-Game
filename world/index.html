@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Svet</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: monospace; }
         canvas { display: block; }
@@ -39,9 +38,6 @@
 <body>
     <div id="ui">
         Seed: <span id="seedDisplay"></span><br>
-        Cas: <span id="timeDisplay"></span><br>
-        Pocasi: <span id="weatherDisplay"></span><br>
-        WASD | Cheaty: ~
     </div>
     
     <div id="timeFilter"></div>
@@ -49,7 +45,6 @@
     <img id="playerHand" src="hand.png" alt="Hand">
 
     <div id="consoleWrapper">
-        <input type="text" id="cheatInput" placeholder="Zadej cheat /" autocomplete="off">
     </div>
 
     <script type="importmap">
@@ -159,7 +154,8 @@
 
         const globalTracker = {
             tree_hive: new Set(), tree_apple: new Set(),
-            bear: new Set(), fox: new Set(), sheep: new Set(), human: new Set()
+            bear: new Set(), fox: new Set(), sheep: new Set(), 
+            human: new Set(), human1: new Set(), cow: new Set()
         };
 
         const textureLoader = new THREE.TextureLoader();
@@ -174,17 +170,31 @@
         const sharedMaterials = {};
 
         const heavyTypes = [
-            { name: 'tree', tex: loadTex('tree.png'), scale: 8, prob: 0.40, offset: 4 },
-            { name: 'tree_hive', tex: loadTex('tree_hive.png'), scale: 8, prob: 0.05, offset: 4 },
-            { name: 'tree_apple', tex: loadTex('tree_apple.png'), scale: 8, prob: 0.05, offset: 4 },
-            { name: 'rock', tex: loadTex('rock.png'), scale: 2, prob: 0.2, offset: 1 },
-            { name: 'bush', tex: loadTex('bush.png'), scale: 3, prob: 0.2, offset: 1.5 },
-            { name: 'stump', tex: loadTex('stump.png'), scale: 1.5, prob: 0.1, offset: 0.75 }
+            { name: 'tree', tex: loadTex('tree.png'), scale: 8, prob: 0.06, offset: 4 },
+            { name: 'tree1', tex: loadTex('tree1.png'), scale: 8, prob: 0.06, offset: 4 },
+            { name: 'tree2', tex: loadTex('tree2.png'), scale: 8, prob: 0.06, offset: 4 },
+            { name: 'tree3', tex: loadTex('tree3.png'), scale: 8, prob: 0.06, offset: 4 },
+            { name: 'tree4', tex: loadTex('tree4.png'), scale: 8, prob: 0.06, offset: 4 },
+            { name: 'tree5', tex: loadTex('tree5.png'), scale: 8, prob: 0.06, offset: 4 },
+            { name: 'tree_hive', tex: loadTex('tree_hive.png'), scale: 8, prob: 0.04, offset: 4 },
+            { name: 'tree_apple', tex: loadTex('tree_apple.png'), scale: 8, prob: 0.04, offset: 4 },
+            { name: 'rock', tex: loadTex('rock.png'), scale: 2, prob: 0.1, offset: 1 },
+            { name: 'rock1', tex: loadTex('rock1.png'), scale: 2, prob: 0.1, offset: 1 },
+            { name: 'bush', tex: loadTex('bush.png'), scale: 3, prob: 0.03, offset: 1.5 },
+            { name: 'bush1', tex: loadTex('bush1.png'), scale: 3, prob: 0.03, offset: 1.5 },
+            { name: 'bush2', tex: loadTex('bush2.png'), scale: 3, prob: 0.03, offset: 1.5 },
+            { name: 'bush3', tex: loadTex('bush3.png'), scale: 3, prob: 0.03, offset: 1.5 },
+            { name: 'bush4', tex: loadTex('bush4.png'), scale: 3, prob: 0.03, offset: 1.5 },
+            { name: 'bush5', tex: loadTex('bush5.png'), scale: 3, prob: 0.03, offset: 1.5 },
+            { name: 'stump', tex: loadTex('stump.png'), scale: 1.5, prob: 0.05, offset: 0.75 },
+            { name: 'stick', tex: loadTex('stick.png'), scale: 1, prob: 0.1, offset: 0.5 }
         ];
 
         const grassType = { name: 'grass', tex: loadTex('grass.png'), scale: 1, prob: 0.89, offset: 0.5 };
         const plantVarieties = [
             { name: 'plant', tex: loadTex('plant.png'), scale: 1.5, offset: 0.75 },
+            { name: 'plantago', tex: loadTex('plantago.png'), scale: 1.1, offset: 0.55 },
+            { name: 'plant_green', tex: loadTex('plant_green.png'), scale: 1.3, offset: 0.65 },
             { name: 'chamomile', tex: loadTex('chamomile.png'), scale: 1.2, offset: 0.6 },
             { name: 'comfrey', tex: loadTex('comfrey.png'), scale: 1.5, offset: 0.75 },
             { name: 'eyebright', tex: loadTex('eyebright.png'), scale: 1.0, offset: 0.5 },
@@ -192,20 +202,24 @@
             { name: 'marigold', tex: loadTex('marigold.png'), scale: 1.2, offset: 0.6 },
             { name: 'mint', tex: loadTex('mint.png'), scale: 1.2, offset: 0.6 },
             { name: 'mushroom', tex: loadTex('mushroom.png'), scale: 0.8, offset: 0.4 },
+            { name: 'nettle', tex: loadTex('nettle.png'), scale: 1.4, offset: 0.7 },
             { name: 'poppy', tex: loadTex('poppy.png'), scale: 1.3, offset: 0.65 },
             { name: 'stjohnswort', tex: loadTex('stjohnswort.png'), scale: 1.4, offset: 0.7 },
+            { name: 'sunflower', tex: loadTex('sunflower.png'), scale: 2.2, offset: 1.1 },
             { name: 'valerian', tex: loadTex('valerian.png'), scale: 1.6, offset: 0.8 }
         ];
 
         const animalTypes = [
-            { name: 'bird', tex: loadTex('bird.png'), scale: 1.5, offset: 10, prob: 0.2, isFlying: true, isAquatic: false, speed: 5 },
-            { name: 'bee', tex: loadTex('bee.png'), scale: 0.5, offset: 3, prob: 0.15, isFlying: true, isAquatic: false, speed: 3 },
+            { name: 'bird', tex: loadTex('bird.png'), scale: 1.5, offset: 10, prob: 0.15, isFlying: true, isAquatic: false, speed: 5 },
+            { name: 'bee', tex: loadTex('bee.png'), scale: 0.5, offset: 3, prob: 0.1, isFlying: true, isAquatic: false, speed: 3 },
             { name: 'bear', tex: loadTex('bear.png'), scale: 3, offset: 1.5, prob: 0.1, isFlying: false, isAquatic: false, speed: 2 },
-            { name: 'fox', tex: loadTex('fox.png'), scale: 1.5, offset: 0.75, prob: 0.15, isFlying: false, isAquatic: false, speed: 3.5 },
-            { name: 'human', tex: loadTex('human.png'), scale: 2.5, offset: 1.25, prob: 0.1, isFlying: false, isAquatic: false, speed: 2.5 },
+            { name: 'fox', tex: loadTex('fox.png'), scale: 1.5, offset: 0.75, prob: 0.1, isFlying: false, isAquatic: false, speed: 3.5 },
+            { name: 'human', tex: loadTex('human.png'), scale: 2.5, offset: 1.25, prob: 0.05, isFlying: false, isAquatic: false, speed: 2.5 },
+            { name: 'human1', tex: loadTex('human1.png'), scale: 2.5, offset: 1.25, prob: 0.05, isFlying: false, isAquatic: false, speed: 2.5 },
             { name: 'horse', tex: loadTex('horse.png'), scale: 3, offset: 1.5, prob: 0.1, isFlying: false, isAquatic: false, speed: 4 },
+            { name: 'cow', tex: loadTex('cow.png'), scale: 2.5, offset: 1.25, prob: 0.1, isFlying: false, isAquatic: false, speed: 1.2 },
             { name: 'sheep', tex: loadTex('sheep.png'), scale: 2, offset: 1, prob: 0.1, isFlying: false, isAquatic: false, speed: 1.5 },
-            { name: 'fish', tex: loadTex('fish.png'), scale: 1, offset: 0.2, prob: 0.1, isFlying: false, isAquatic: true, speed: 2 }
+            { name: 'fish', tex: loadTex('fish.png'), scale: 1, offset: 0.2, prob: 0.15, isFlying: false, isAquatic: true, speed: 2 }
         ];
 
         const celestialGroup = new THREE.Group();
@@ -278,13 +292,13 @@
             
             rainbowSprite.position.set(camera.position.x, camera.position.y + 60, camera.position.z - 150);
 
-            let filterColor = "#ffffff", timeString = "Den", targetStarOpacity = 0;
+            let filterColor = "#ffffff", timeString = "Day", targetStarOpacity = 0;
             if (dayTime < 0.2 || dayTime > 0.8) { 
-                filterColor = "#3a3a5a"; timeString = "Noc"; targetStarOpacity = 1;
+                filterColor = "#3a3a5a"; timeString = "Night"; targetStarOpacity = 1;
             } else if (dayTime >= 0.2 && dayTime < 0.3) { 
-                filterColor = "#ffb088"; timeString = "Svitani"; targetStarOpacity = 1.0 - ((dayTime - 0.2) / 0.1); 
+                filterColor = "#ffb088"; timeString = "Sunrise"; targetStarOpacity = 1.0 - ((dayTime - 0.2) / 0.1); 
             } else if (dayTime >= 0.7 && dayTime <= 0.8) { 
-                filterColor = "#ff8855"; timeString = "Stmivani"; targetStarOpacity = (dayTime - 0.7) / 0.1; 
+                filterColor = "#ff8855"; timeString = "Sunset"; targetStarOpacity = (dayTime - 0.7) / 0.1; 
             }
 
             document.getElementById('timeFilter').style.backgroundColor = filterColor;
@@ -303,7 +317,7 @@
                 weatherTimer = isRaining ? 15 + Math.random() * 20 : 30 + Math.random() * 60; 
                 if (wasRaining && dayTime > 0.1 && dayTime < 0.9) rainbowTimer = 60.0; 
             }
-            document.getElementById('weatherDisplay').innerText = isRaining ? "Chcije" : "Slunecno";
+            document.getElementById('weatherDisplay').innerText = isRaining ? "Raining" : "Clear";
 
             if (isRaining) {
                 rainGroup.position.set(camera.position.x, 0, camera.position.z);
@@ -537,7 +551,7 @@
                                 if (sheep.entity && sheep.dist < 20) { ai.target.x = sheep.entity.sprite.position.x; ai.target.z = sheep.entity.sprite.position.z; }
                             }
 
-                            if (ai.type.name === 'human') {
+                            if (ai.type.name === 'human' || ai.type.name === 'human1') {
                                 const bear = findNearest(ai.sprite.position, 'bear');
                                 if (bear.entity && bear.dist < 15) setFleeTarget(ai, bear.entity.sprite.position, 20);
                             } else if (ai.type.name === 'sheep') {
@@ -551,7 +565,7 @@
                     } 
                     
                     if (ai.state === 'moving') {
-                        if (ai.type.name === 'human') {
+                        if (ai.type.name === 'human' || ai.type.name === 'human1') {
                             const bear = findNearest(ai.sprite.position, 'bear');
                             if (bear.entity && bear.dist < 15) setFleeTarget(ai, bear.entity.sprite.position, 20);
                         } else if (ai.type.name === 'sheep') {
