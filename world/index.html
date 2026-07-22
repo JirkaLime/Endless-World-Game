@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Svet</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: monospace; }
         canvas { display: block; }
@@ -38,6 +39,9 @@
 <body>
     <div id="ui">
         Seed: <span id="seedDisplay"></span><br>
+        Cas: <span id="timeDisplay"></span><br>
+        Pocasi: <span id="weatherDisplay"></span><br>
+        WASD | Cheaty: ~
     </div>
     
     <div id="timeFilter"></div>
@@ -45,6 +49,7 @@
     <img id="playerHand" src="hand.png" alt="Hand">
 
     <div id="consoleWrapper">
+        <input type="text" id="cheatInput" placeholder="Zadej cheat /" autocomplete="off">
     </div>
 
     <script type="importmap">
@@ -292,13 +297,13 @@
             
             rainbowSprite.position.set(camera.position.x, camera.position.y + 60, camera.position.z - 150);
 
-            let filterColor = "#ffffff", timeString = "Day", targetStarOpacity = 0;
+            let filterColor = "#ffffff", timeString = "Den", targetStarOpacity = 0;
             if (dayTime < 0.2 || dayTime > 0.8) { 
-                filterColor = "#3a3a5a"; timeString = "Night"; targetStarOpacity = 1;
+                filterColor = "#3a3a5a"; timeString = "Noc"; targetStarOpacity = 1;
             } else if (dayTime >= 0.2 && dayTime < 0.3) { 
-                filterColor = "#ffb088"; timeString = "Sunrise"; targetStarOpacity = 1.0 - ((dayTime - 0.2) / 0.1); 
+                filterColor = "#ffb088"; timeString = "Usvit"; targetStarOpacity = 1.0 - ((dayTime - 0.2) / 0.1); 
             } else if (dayTime >= 0.7 && dayTime <= 0.8) { 
-                filterColor = "#ff8855"; timeString = "Sunset"; targetStarOpacity = (dayTime - 0.7) / 0.1; 
+                filterColor = "#ff8855"; timeString = "Stmivani"; targetStarOpacity = (dayTime - 0.7) / 0.1; 
             }
 
             document.getElementById('timeFilter').style.backgroundColor = filterColor;
@@ -317,7 +322,7 @@
                 weatherTimer = isRaining ? 15 + Math.random() * 20 : 30 + Math.random() * 60; 
                 if (wasRaining && dayTime > 0.1 && dayTime < 0.9) rainbowTimer = 60.0; 
             }
-            document.getElementById('weatherDisplay').innerText = isRaining ? "Raining" : "Clear";
+            document.getElementById('weatherDisplay').innerText = isRaining ? "Chcije" : "Slunecno";
 
             if (isRaining) {
                 rainGroup.position.set(camera.position.x, 0, camera.position.z);
