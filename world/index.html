@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Svet</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: monospace; }
+        canvas { display: block; }
+        #ui {
+            position: absolute; top: 10px; left: 10px; color: white;
+            background: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px;
+            pointer-events: none; z-index: 10;
+        }
+        #timeFilter {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; mix-blend-mode: multiply; background-color: #ffffff; 
+            z-index: 5; transition: background-color 0.5s;
+        }
+        #waterFilter {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; background-color: rgba(10, 50, 150, 0.5); 
+            z-index: 6; opacity: 0; transition: opacity 0.2s;
+        }
+        #playerHand {
+            position: absolute; bottom: -20px; right: 5%; width: 800px; 
+            max-width: 100vw; pointer-events: none; z-index: 20; 
+            transform-origin: bottom right; transition: transform 0.1s ease-out;
+        }
+        #consoleWrapper {
+            position: absolute; bottom: 20px; left: 20px; z-index: 30; display: none;
+        }
+        #cheatInput {
+            width: 300px; padding: 10px; background: rgba(0,0,0,0.8);
+            color: #0f0; border: 1px solid #0f0; font-family: monospace; font-size: 16px; outline: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        Seed: <span id="seedDisplay"></span><br>
+        Cas: <span id="timeDisplay"></span><br>
+        Pocasi: <span id="weatherDisplay"></span><br>
+        WASD | Cheaty: ~
+    </div>
+    
+    <div id="timeFilter"></div>
+    <div id="waterFilter"></div>
+    <img id="playerHand" src="hand.png" alt="Hand">
+
+    <div id="consoleWrapper">
+        <input type="text" id="cheatInput" placeholder="Zadej cheat /" autocomplete="off">
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+        const SEED = Math.floor(Math.random() * 10000);
+        document.getElementById('seedDisplay').innerText = SEED;
+        const WATER_LEVEL = -2.5; 
+
+        function mulberry32(a) {
+            return function() {
+              var t = a += 0x6D2B79F5;
+              t = Math.imul(t ^ t >>> 15, t | 1);
+              t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+              return ((t ^ t >>> 14) >>> 0) / 4294967296;
+            }
+        }
+
+        function hash(x, y) {
+            let n = SEED + x * 374761393 + y * 668265263;
+            n = (n ^ (n >> 13)) * 1274126177;
+            return (n ^ (n >> 16)) / 4294967296;
+        }
+
+        function lerp(a, b, t) { return a + t * (b - a); }
+        function smoothstep(t) { return t * t * (3 - 2 * t); }
+
+        function valueNoise(x, y) {
+            const xi = Math.floor(x); const yi = Math.floor(y);
+            const u = smoothstep(x - xi); const v = smoothstep(y - yi);
+            return lerp(lerp(hash(xi, yi), hash(xi + 1, yi), u), lerp(hash(xi, yi + 1), hash(xi + 1, yi + 1), u), v);
+        }
+
+        function getElevation(x, z) {
+            let elevation = 0, amplitude = 20, frequency = 0.01;
+            for(let i = 0; i < 3; i++) {
+                elevation += (valueNoise(x * frequency, z * frequency) - 0.30) * amplitude;
+                amplitude *= 0.5; frequency *= 2;
+            }
+            return elevation;
+        }
+
+        function isRoad(x, z) {
+            let path1 = Math.abs(z - (Math.sin(x * 0.01) * 40 + Math.sin(x * 0.035) * 15));
+            let path2 = Math.abs(x - (Math.cos(z * 0.012) * 40 + Math.cos(z * 0.028) * 15));
+            let edgeNoise = valueNoise(x * 0.2, z * 0.2) * 2;
+            return (path1 < (3 + edgeNoise)) || (path2 < (3 + edgeNoise));
+        }
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB); 
+        scene.fog = new THREE.Fog(0x87CEEB, 15, 80);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 150);
+        const renderer = new THREE.WebGLRenderer({ antialias: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new PointerLockControls(camera, document.body);
+        const consoleWrapper = document.getElementById('consoleWrapper');
+        const cheatInput = document.getElementById('cheatInput');
+
+        document.body.addEventListener('click', () => { 
+            if(document.activeElement !== cheatInput) controls.lock(); 
+        });
+
+        let speed = 10;
+        const moveState = { forward: false, backward: false, left: false, right: false };
+        
+        document.addEventListener('keydown', (e) => {
+            if (e.key === '`' || e.key === '~') {
+                if(controls.isLocked) controls.unlock();
+                consoleWrapper.style.display = 'block';
+                setTimeout(() => cheatInput.focus(), 10);
+            }
+            if(document.activeElement !== cheatInput) {
+                if(e.code === 'KeyW') moveState.forward = true;
+                if(e.code === 'KeyS') moveState.backward = true;
+                if(e.code === 'KeyA') moveState.left = true;
+                if(e.code === 'KeyD') moveState.right = true;
+            } else if (e.key === 'Enter') {
+                const cmd = cheatInput.value.split(' ');
+                if(cmd[0] === '/speed') speed = parseFloat(cmd[1]);
+                if(cmd[0] === '/time') dayTime = parseFloat(cmd[1]);
+                if(cmd[0] === '/rain') weatherTimer = 0; 
+                cheatInput.value = '';
+                consoleWrapper.style.display = 'none';
+                controls.lock();
+            }
+        });
+        document.addEventListener('keyup', (e) => {
+            if(e.code === 'KeyW') moveState.forward = false;
+            if(e.code === 'KeyS') moveState.backward = false;
+            if(e.code === 'KeyA') moveState.left = false;
+            if(e.code === 'KeyD') moveState.right = false;
+        });
+
+        const globalTracker = {
+            tree_hive: new Set(), tree_apple: new Set(),
+            bear: new Set(), fox: new Set(), sheep: new Set(), human: new Set()
+        };
+
+        const textureLoader = new THREE.TextureLoader();
+        function loadTex(path) {
+            const tex = textureLoader.load(path);
+            tex.magFilter = THREE.NearestFilter;
+            tex.minFilter = THREE.NearestFilter;
+            tex.colorSpace = THREE.SRGBColorSpace; 
+            return tex;
+        }
+
+        const sharedMaterials = {};
+
+        const heavyTypes = [
+            { name: 'tree', tex: loadTex('tree.png'), scale: 8, prob: 0.40, offset: 4 },
+            { name: 'tree_hive', tex: loadTex('tree_hive.png'), scale: 8, prob: 0.05, offset: 4 },
+            { name: 'tree_apple', tex: loadTex('tree_apple.png'), scale: 8, prob: 0.05, offset: 4 },
+            { name: 'rock', tex: loadTex('rock.png'), scale: 2, prob: 0.2, offset: 1 },
+            { name: 'bush', tex: loadTex('bush.png'), scale: 3, prob: 0.2, offset: 1.5 },
+            { name: 'stump', tex: loadTex('stump.png'), scale: 1.5, prob: 0.1, offset: 0.75 }
+        ];
+
+        const grassType = { name: 'grass', tex: loadTex('grass.png'), scale: 1, prob: 0.89, offset: 0.5 };
+        const plantVarieties = [
+            { name: 'plant', tex: loadTex('plant.png'), scale: 1.5, offset: 0.75 },
+            { name: 'chamomile', tex: loadTex('chamomile.png'), scale: 1.2, offset: 0.6 },
+            { name: 'comfrey', tex: loadTex('comfrey.png'), scale: 1.5, offset: 0.75 },
+            { name: 'eyebright', tex: loadTex('eyebright.png'), scale: 1.0, offset: 0.5 },
+            { name: 'fern', tex: loadTex('fern.png'), scale: 1.5, offset: 0.75 },
+            { name: 'marigold', tex: loadTex('marigold.png'), scale: 1.2, offset: 0.6 },
+            { name: 'mint', tex: loadTex('mint.png'), scale: 1.2, offset: 0.6 },
+            { name: 'mushroom', tex: loadTex('mushroom.png'), scale: 0.8, offset: 0.4 },
+            { name: 'poppy', tex: loadTex('poppy.png'), scale: 1.3, offset: 0.65 },
+            { name: 'stjohnswort', tex: loadTex('stjohnswort.png'), scale: 1.4, offset: 0.7 },
+            { name: 'valerian', tex: loadTex('valerian.png'), scale: 1.6, offset: 0.8 }
+        ];
+
+        const animalTypes = [
+            { name: 'bird', tex: loadTex('bird.png'), scale: 1.5, offset: 10, prob: 0.2, isFlying: true, isAquatic: false, speed: 5 },
+            { name: 'bee', tex: loadTex('bee.png'), scale: 0.5, offset: 3, prob: 0.15, isFlying: true, isAquatic: false, speed: 3 },
+            { name: 'bear', tex: loadTex('bear.png'), scale: 3, offset: 1.5, prob: 0.1, isFlying: false, isAquatic: false, speed: 2 },
+            { name: 'fox', tex: loadTex('fox.png'), scale: 1.5, offset: 0.75, prob: 0.15, isFlying: false, isAquatic: false, speed: 3.5 },
+            { name: 'human', tex: loadTex('human.png'), scale: 2.5, offset: 1.25, prob: 0.1, isFlying: false, isAquatic: false, speed: 2.5 },
+            { name: 'horse', tex: loadTex('horse.png'), scale: 3, offset: 1.5, prob: 0.1, isFlying: false, isAquatic: false, speed: 4 },
+            { name: 'sheep', tex: loadTex('sheep.png'), scale: 2, offset: 1, prob: 0.1, isFlying: false, isAquatic: false, speed: 1.5 },
+            { name: 'fish', tex: loadTex('fish.png'), scale: 1, offset: 0.2, prob: 0.1, isFlying: false, isAquatic: true, speed: 2 }
+        ];
+
+        const celestialGroup = new THREE.Group();
+        scene.add(celestialGroup);
+
+        const sunSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: loadTex('sun.png'), color: 0xffffee, fog: false }));
+        sunSprite.scale.set(30, 30, 1);
+        celestialGroup.add(sunSprite);
+
+        const moonSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: loadTex('moon.png'), color: 0xaaccff, fog: false }));
+        moonSprite.scale.set(20, 20, 1);
+        celestialGroup.add(moonSprite);
+
+        const rainbowSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: loadTex('rainbow.png'), transparent: true, opacity: 0, fog: false, depthTest: false }));
+        rainbowSprite.scale.set(300, 150, 1);
+        scene.add(rainbowSprite);
+
+        const starMaterials = [];
+        for(let i=0; i<5; i++) {
+            starMaterials.push(new THREE.SpriteMaterial({ map: loadTex('star.png'), transparent: true, opacity: 0, fog: false, blending: THREE.AdditiveBlending }));
+        }
+        
+        const starGroup = new THREE.Group();
+        for (let i = 0; i < 400; i++) {
+            const star = new THREE.Sprite(starMaterials[i % 5]); 
+            const r = 90 + Math.random() * 40; const u = Math.random(); const v = Math.random();
+            const theta = u * 2.0 * Math.PI; const phi = Math.acos(2.0 * v - 1.0);
+            star.position.set(r * Math.sin(phi) * Math.cos(theta), r * Math.sin(phi) * Math.sin(theta), r * Math.cos(phi));
+            const size = 0.5 + Math.random() * 1.5; star.scale.set(size, size, 1);
+            starGroup.add(star);
+        }
+        celestialGroup.add(starGroup);
+
+        let isRaining = false;
+        let weatherTimer = 30; 
+        let rainbowTimer = 0;
+        const rainGroup = new THREE.Group();
+        const rainDrops = [];
+        sharedMaterials.rain = new THREE.SpriteMaterial({ map: loadTex('rain.png'), transparent: true, opacity: 0.6 });
+        
+        for(let i=0; i<800; i++) {
+            const drop = new THREE.Sprite(sharedMaterials.rain);
+            drop.position.set((Math.random() - 0.5) * 40, Math.random() * 30, (Math.random() - 0.5) * 40);
+            drop.scale.set(0.2, 1.5, 1);
+            rainGroup.add(drop); rainDrops.push(drop);
+        }
+        scene.add(rainGroup); rainGroup.visible = false;
+
+        const bubbles = [];
+        sharedMaterials.bubble = new THREE.SpriteMaterial({ map: loadTex('bubble.png'), transparent: true });
+        for(let i=0; i<30; i++) {
+            const bub = new THREE.Sprite(sharedMaterials.bubble);
+            bub.visible = false; bub.scale.set(0.3, 0.3, 1);
+            scene.add(bub); bubbles.push(bub);
+        }
+
+        sharedMaterials.cloud = new THREE.SpriteMaterial({ map: loadTex('cloud.png'), transparent: true, fog: true, depthWrite: false });
+
+        let dayTime = 0.25; 
+        const dayLength = 180; 
+
+        function updateEnvironment(delta) {
+            dayTime = (dayTime + (delta / dayLength)) % 1.0;
+            const angle = (dayTime - 0.25) * Math.PI * 2; 
+            
+            sunSprite.position.set(Math.cos(angle) * 100, Math.sin(angle) * 100, -50);
+            moonSprite.position.set(Math.cos(angle + Math.PI) * 100, Math.sin(angle + Math.PI) * 100, -50);
+            starGroup.rotation.z = angle + Math.PI;
+            celestialGroup.position.copy(camera.position);
+            
+            rainbowSprite.position.set(camera.position.x, camera.position.y + 60, camera.position.z - 150);
+
+            let filterColor = "#ffffff", timeString = "Den", targetStarOpacity = 0;
+            if (dayTime < 0.2 || dayTime > 0.8) { 
+                filterColor = "#3a3a5a"; timeString = "Noc"; targetStarOpacity = 1;
+            } else if (dayTime >= 0.2 && dayTime < 0.3) { 
+                filterColor = "#ffb088"; timeString = "Svitani"; targetStarOpacity = 1.0 - ((dayTime - 0.2) / 0.1); 
+            } else if (dayTime >= 0.7 && dayTime <= 0.8) { 
+                filterColor = "#ff8855"; timeString = "Stmivani"; targetStarOpacity = (dayTime - 0.7) / 0.1; 
+            }
+
+            document.getElementById('timeFilter').style.backgroundColor = filterColor;
+            document.getElementById('timeDisplay').innerText = timeString;
+
+            const timeNow = Date.now() * 0.002;
+            for (let i = 0; i < 5; i++) {
+                starMaterials[i].opacity = targetStarOpacity * (0.4 + 0.6 * Math.sin(timeNow + i)); 
+            }
+
+            weatherTimer -= delta;
+            if(weatherTimer <= 0) {
+                const wasRaining = isRaining;
+                isRaining = !isRaining;
+                rainGroup.visible = isRaining;
+                weatherTimer = isRaining ? 15 + Math.random() * 20 : 30 + Math.random() * 60; 
+                if (wasRaining && dayTime > 0.1 && dayTime < 0.9) rainbowTimer = 60.0; 
+            }
+            document.getElementById('weatherDisplay').innerText = isRaining ? "Chcije" : "Slunecno";
+
+            if (isRaining) {
+                rainGroup.position.set(camera.position.x, 0, camera.position.z);
+                for(let drop of rainDrops) {
+                    drop.position.y -= 25 * delta; 
+                    if(drop.position.y < -5) {
+                        drop.position.y = 25 + Math.random() * 10; 
+                        drop.position.x = (Math.random() - 0.5) * 40; drop.position.z = (Math.random() - 0.5) * 40;
+                    }
+                }
+            }
+
+            if (rainbowTimer > 0) {
+                rainbowTimer -= delta;
+                let rainbowOpacity = 0;
+                if (rainbowTimer > 50) rainbowOpacity = (60 - rainbowTimer) / 10.0; 
+                else if (rainbowTimer < 10) rainbowOpacity = rainbowTimer / 10.0; 
+                else rainbowOpacity = 1.0; 
+                
+                rainbowSprite.material.opacity = rainbowOpacity * 0.6; 
+            } else {
+                rainbowSprite.material.opacity = 0;
+            }
+        }
+
+        const chunkSize = 20;
+        const renderDistance = 4;
+        const activeChunks = new Map();
+        const terrainMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+
+        function getChunkSeed(cx, cz) {
+            return SEED + (cx * 1337) + (cz * 90210);
+        }
+
+        function spawnSprite(typeArray, group, chunkRandom, cx, cz, isDetail = false) {
+            let randVal = chunkRandom();
+            let selectedType;
+            
+            if (isDetail) {
+                if (randVal < grassType.prob) {
+                    selectedType = grassType;
+                } else {
+                    const worldXApprox = cx * chunkSize;
+                    const worldZApprox = cz * chunkSize;
+                    const clusterHash = hash(Math.floor(worldXApprox/7), Math.floor(worldZApprox/7));
+                    const clusterIndex = Math.floor(clusterHash * plantVarieties.length);
+                    selectedType = plantVarieties[clusterIndex];
+                }
+            } else {
+                let cumulativeProb = 0;
+                selectedType = typeArray[0];
+                for(let type of typeArray) {
+                    cumulativeProb += type.prob;
+                    if(randVal <= cumulativeProb) { selectedType = type; break; }
+                }
+            }
+
+            const offsetX = (chunkRandom() - 0.5) * chunkSize;
+            const offsetZ = (chunkRandom() - 0.5) * chunkSize;
+            const worldX = (cx * chunkSize) + offsetX;
+            const worldZ = (cz * chunkSize) + offsetZ;
+            const elevation = getElevation(worldX, worldZ);
+            
+            const onRoad = isRoad(worldX, worldZ);
+            const inWater = elevation < WATER_LEVEL;
+
+            if (onRoad) return null; 
+            if (selectedType.isAquatic !== undefined) { 
+                if (inWater && !selectedType.isAquatic) return null;
+                if (!inWater && selectedType.isAquatic) return null;
+            } else { 
+                if (inWater) return null; 
+            }
+
+            if (!sharedMaterials[selectedType.name + '_right']) {
+                const texRight = selectedType.tex;
+                sharedMaterials[selectedType.name + '_right'] = new THREE.SpriteMaterial({ map: texRight, transparent: true, alphaTest: 0.5 });
+                
+                const texLeft = texRight.clone();
+                texLeft.repeat.x = -1;
+                texLeft.offset.x = 1;
+                texLeft.needsUpdate = true;
+                sharedMaterials[selectedType.name + '_left'] = new THREE.SpriteMaterial({ map: texLeft, transparent: true, alphaTest: 0.5 });
+            }
+
+            const sprite = new THREE.Sprite(sharedMaterials[selectedType.name + '_right']);
+            sprite.position.set(worldX, elevation + selectedType.offset, worldZ);
+            sprite.scale.set(selectedType.scale, selectedType.scale, 1);
+            group.add(sprite);
+            return { sprite, type: selectedType }; 
+        }
+
+        function generateChunk(cx, cz) {
+            const chunkKey = `${cx},${cz}`;
+            if (activeChunks.has(chunkKey)) return;
+
+            const mainGroup = new THREE.Group();
+            const detailLow = new THREE.Group(); const detailMed = new THREE.Group(); const detailHigh = new THREE.Group();
+            const chunkEntities = []; const chunkAnimals = [];
+            const chunkRandom = mulberry32(getChunkSeed(cx, cz));
+
+            const segments = 10;
+            const terrainGeo = new THREE.PlaneGeometry(chunkSize, chunkSize, segments, segments);
+            terrainGeo.rotateX(-Math.PI / 2);
+            
+            const positions = terrainGeo.attributes.position;
+            const colors = [];
+            const centerX = cx * chunkSize; const centerZ = cz * chunkSize;
+            let hasWater = false;
+
+            for (let i = 0; i < positions.count; i++) {
+                const vx = centerX + positions.getX(i);
+                const vz = centerZ + positions.getZ(i);
+                const vy = getElevation(vx, vz);
+                positions.setY(i, vy);
+                
+                let col = new THREE.Color(0x3d7331); 
+                if (isRoad(vx, vz)) {
+                    col.setHex(0x5a4028); 
+                } else if (vy < WATER_LEVEL + 0.3) {
+                    col.setHex(0x8B7355); 
+                    hasWater = true;
+                }
+                colors.push(col.r, col.g, col.b);
+            }
+            terrainGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            terrainGeo.computeVertexNormals();
+            const terrainMesh = new THREE.Mesh(terrainGeo, terrainMat);
+            terrainMesh.position.set(centerX, 0, centerZ);
+            mainGroup.add(terrainMesh);
+
+            if (hasWater) {
+                const waterGeo = new THREE.PlaneGeometry(chunkSize, chunkSize);
+                waterGeo.rotateX(-Math.PI / 2);
+                const waterMesh = new THREE.Mesh(waterGeo, new THREE.MeshBasicMaterial({ color: 0x3399ff, transparent: true, opacity: 0.6, side: THREE.DoubleSide }));
+                waterMesh.position.set(centerX, WATER_LEVEL, centerZ);
+                mainGroup.add(waterMesh);
+            }
+
+            for(let i = 0; i < 6; i++) {
+                const item = spawnSprite(heavyTypes, mainGroup, chunkRandom, cx, cz, false);
+                if (item && globalTracker[item.type.name]) {
+                    globalTracker[item.type.name].add(item); chunkEntities.push(item);
+                }
+            }
+
+            for(let i = 0; i < Math.floor(chunkRandom() * 3); i++) {
+                const cloud = new THREE.Sprite(sharedMaterials.cloud);
+                const scale = 15 + (chunkRandom() * 15);
+                cloud.position.set(centerX + (chunkRandom() - 0.5) * chunkSize, getElevation(centerX, centerZ) + 25 + (chunkRandom() * 20), centerZ + (chunkRandom() - 0.5) * chunkSize);
+                cloud.scale.set(scale * 2, scale, 1); mainGroup.add(cloud);
+            }
+
+            for(let i = 0; i < 50; i++) spawnSprite(null, detailLow, chunkRandom, cx, cz, true);
+            for(let i = 0; i < 150; i++) spawnSprite(null, detailMed, chunkRandom, cx, cz, true);
+            for(let i = 0; i < 1000; i++) spawnSprite(null, detailHigh, chunkRandom, cx, cz, true);
+
+            for(let i = 0; i < 1 + Math.floor(chunkRandom() * 3); i++) {
+                const aiData = spawnSprite(animalTypes, mainGroup, chunkRandom, cx, cz, false);
+                if (aiData) {
+                    const aiObj = { sprite: aiData.sprite, type: aiData.type, target: aiData.sprite.position.clone(), state: 'waiting', timer: 0 };
+                    chunkAnimals.push(aiObj);
+                    if (globalTracker[aiData.type.name]) globalTracker[aiData.type.name].add(aiObj);
+                }
+            }
+
+            scene.add(mainGroup); 
+            activeChunks.set(chunkKey, { 
+                main: mainGroup, low: detailLow, med: detailMed, high: detailHigh, 
+                cx: cx, cz: cz, lowActive: false, medActive: false, highActive: false,
+                animals: chunkAnimals, staticEntities: chunkEntities
+            });
+        }
+
+        function findNearest(position, targetTypeName) {
+            let nearest = null; let minDistSq = Infinity;
+            if (!globalTracker[targetTypeName]) return { entity: null, dist: Infinity };
+            for (let ent of globalTracker[targetTypeName]) {
+                const dx = ent.sprite.position.x - position.x; const dz = ent.sprite.position.z - position.z;
+                const distSq = dx*dx + dz*dz;
+                if (distSq < minDistSq) { minDistSq = distSq; nearest = ent; }
+            }
+            return { entity: nearest, dist: Math.sqrt(minDistSq) };
+        }
+
+        function setFleeTarget(ai, dangerPos, safeDistance) {
+            const dx = ai.sprite.position.x - dangerPos.x; const dz = ai.sprite.position.z - dangerPos.z;
+            const len = Math.sqrt(dx*dx + dz*dz) || 1;
+            
+            let targetX = ai.sprite.position.x + (dx/len) * safeDistance;
+            let targetZ = ai.sprite.position.z + (dz/len) * safeDistance;
+            if (getElevation(targetX, targetZ) < WATER_LEVEL && !ai.type.isAquatic && !ai.type.isFlying) {
+                targetX = ai.sprite.position.x + (dz/len) * safeDistance;
+                targetZ = ai.sprite.position.z - (dx/len) * safeDistance;
+            }
+            ai.target.x = targetX; ai.target.z = targetZ;
+            ai.target.y = getElevation(targetX, targetZ) + ai.type.offset;
+            ai.state = 'moving'; ai.timer = 2.0; 
+        }
+
+        function updateAI(delta) {
+            const camRight = new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion); 
+
+            for (const chunk of activeChunks.values()) {
+                for (let ai of chunk.animals) {
+                    
+                    if (ai.state === 'waiting' || ai.state === 'resting') {
+                        ai.timer -= delta;
+                        if (ai.timer <= 0) {
+                            ai.state = 'moving';
+                            
+                            let validTarget = false; let attempts = 0;
+                            while(!validTarget && attempts < 5) {
+                                ai.target.x = (chunk.cx * chunkSize) + (Math.random() - 0.5) * chunkSize;
+                                ai.target.z = (chunk.cz * chunkSize) + (Math.random() - 0.5) * chunkSize;
+                                const isTargetWater = getElevation(ai.target.x, ai.target.z) < WATER_LEVEL;
+                                if (ai.type.isAquatic) { validTarget = isTargetWater; } 
+                                else if (!ai.type.isFlying) { validTarget = !isTargetWater; } 
+                                else { validTarget = true; } 
+                                attempts++;
+                            }
+                            
+                            if (ai.type.name === 'bee' || ai.type.name === 'bear') {
+                                const hive = findNearest(ai.sprite.position, 'tree_hive');
+                                if (hive.entity && hive.dist < 30) { ai.target.x = hive.entity.sprite.position.x; ai.target.z = hive.entity.sprite.position.z; }
+                            } else if (ai.type.name === 'horse') {
+                                const apple = findNearest(ai.sprite.position, 'tree_apple');
+                                if (apple.entity && apple.dist < 30) { ai.target.x = apple.entity.sprite.position.x; ai.target.z = apple.entity.sprite.position.z; }
+                            } else if (ai.type.name === 'fox') {
+                                const sheep = findNearest(ai.sprite.position, 'sheep');
+                                if (sheep.entity && sheep.dist < 20) { ai.target.x = sheep.entity.sprite.position.x; ai.target.z = sheep.entity.sprite.position.z; }
+                            }
+
+                            if (ai.type.name === 'human') {
+                                const bear = findNearest(ai.sprite.position, 'bear');
+                                if (bear.entity && bear.dist < 15) setFleeTarget(ai, bear.entity.sprite.position, 20);
+                            } else if (ai.type.name === 'sheep') {
+                                const fox = findNearest(ai.sprite.position, 'fox');
+                                if (fox.entity && fox.dist < 15) setFleeTarget(ai, fox.entity.sprite.position, 20);
+                            }
+
+                            const terrainY = getElevation(ai.target.x, ai.target.z);
+                            ai.target.y = ai.type.isFlying ? Math.max(terrainY, WATER_LEVEL) + 5 + (Math.random() * 10) : terrainY + ai.type.offset;
+                        }
+                    } 
+                    
+                    if (ai.state === 'moving') {
+                        if (ai.type.name === 'human') {
+                            const bear = findNearest(ai.sprite.position, 'bear');
+                            if (bear.entity && bear.dist < 15) setFleeTarget(ai, bear.entity.sprite.position, 20);
+                        } else if (ai.type.name === 'sheep') {
+                            const fox = findNearest(ai.sprite.position, 'fox');
+                            if (fox.entity && fox.dist < 15) setFleeTarget(ai, fox.entity.sprite.position, 20);
+                        }
+
+                        const dx = ai.target.x - ai.sprite.position.x;
+                        const dz = ai.target.z - ai.sprite.position.z;
+                        const distanceToTarget2D = Math.sqrt(dx*dx + dz*dz); 
+
+                        if (distanceToTarget2D < 1.0) { 
+                            ai.state = 'resting';
+                            ai.timer = Math.random() * 3.0 + 4.0; 
+                        } else {
+                            const moveStep = ai.type.speed * delta;
+                            const ratio = moveStep / Math.max(distanceToTarget2D, 0.01);
+                            
+                            ai.sprite.position.x += dx * ratio;
+                            ai.sprite.position.z += dz * ratio;
+
+                            if (!ai.type.isFlying) {
+                                ai.sprite.position.y = getElevation(ai.sprite.position.x, ai.sprite.position.z) + ai.type.offset;
+                            } else {
+                                ai.sprite.position.y += (ai.target.y - ai.sprite.position.y) * (moveStep / Math.max(distanceToTarget2D, 1));
+                            }
+
+                            const vel = new THREE.Vector3(dx, 0, dz).normalize();
+                            const dot = vel.dot(camRight);
+                            const isLeft = dot < 0;
+                            ai.sprite.material = sharedMaterials[ai.type.name + (isLeft ? '_left' : '_right')];
+                        }
+                    }
+                }
+            }
+        }
+
+        function updateChunks() {
+            const currentChunkX = Math.floor(camera.position.x / chunkSize);
+            const currentChunkZ = Math.floor(camera.position.z / chunkSize);
+
+            for (let x = -renderDistance; x <= renderDistance; x++) {
+                for (let z = -renderDistance; z <= renderDistance; z++) {
+                    generateChunk(currentChunkX + x, currentChunkZ + z);
+                }
+            }
+
+            for (const [key, chunk] of activeChunks.entries()) {
+                const dist = Math.max(Math.abs(chunk.cx - currentChunkX), Math.abs(chunk.cz - currentChunkZ));
+                
+                if (dist > renderDistance) {
+                    scene.remove(chunk.main);
+                    if (chunk.lowActive) scene.remove(chunk.low);
+                    if (chunk.medActive) scene.remove(chunk.med);
+                    if (chunk.highActive) scene.remove(chunk.high);
+                    
+                    for (let animal of chunk.animals) if (globalTracker[animal.type.name]) globalTracker[animal.type.name].delete(animal);
+                    for (let item of chunk.staticEntities) if (globalTracker[item.type.name]) globalTracker[item.type.name].delete(item);
+
+                    activeChunks.delete(key);
+                } else {
+                    if (dist <= 3 && !chunk.lowActive) { scene.add(chunk.low); chunk.lowActive = true; }
+                    else if (dist > 3 && chunk.lowActive) { scene.remove(chunk.low); chunk.lowActive = false; }
+                    if (dist <= 2 && !chunk.medActive) { scene.add(chunk.med); chunk.medActive = true; }
+                    else if (dist > 2 && chunk.medActive) { scene.remove(chunk.med); chunk.medActive = false; }
+                    if (dist <= 1 && !chunk.highActive) { scene.add(chunk.high); chunk.highActive = true; }
+                    else if (dist > 1 && chunk.highActive) { scene.remove(chunk.high); chunk.highActive = false; }
+                }
+            }
+        }
+
+        const clock = new THREE.Clock();
+        camera.position.set(0, getElevation(0, 0) + 2, 0);
+        
+        const handEl = document.getElementById('playerHand');
+        const waterFilter = document.getElementById('waterFilter');
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+
+            if (controls.isLocked) {
+                const moveSpeed = speed * delta;
+                let isMoving = false;
+                if (moveState.forward)  { controls.moveForward(moveSpeed); isMoving = true; }
+                if (moveState.backward) { controls.moveForward(-moveSpeed); isMoving = true; }
+                if (moveState.right)    { controls.moveRight(moveSpeed); isMoving = true; }
+                if (moveState.left)     { controls.moveRight(-moveSpeed); isMoving = true; }
+                
+                const terrainHeight = getElevation(camera.position.x, camera.position.z);
+                
+                camera.position.y = terrainHeight + 2; 
+
+                if (camera.position.y < WATER_LEVEL) {
+                    waterFilter.style.opacity = 1;
+                    for(let bub of bubbles) {
+                        if (!bub.visible) {
+                            if (Math.random() < 0.05) { 
+                                bub.position.set(camera.position.x + (Math.random()-0.5)*2, camera.position.y - 1, camera.position.z + (Math.random()-0.5)*2);
+                                bub.visible = true;
+                            }
+                        } else {
+                            bub.position.y += 2 * delta; 
+                            bub.position.x += Math.sin(Date.now() * 0.005 + bub.id) * 0.02; 
+                            if (bub.position.y > WATER_LEVEL) bub.visible = false; 
+                        }
+                    }
+                } else {
+                    waterFilter.style.opacity = 0;
+                    for(let bub of bubbles) bub.visible = false;
+                }
+
+                if (isMoving) {
+                    const time = Date.now() * 0.008; 
+                    const offsetY = Math.abs(Math.sin(time)) * 25; 
+                    const offsetX = Math.cos(time) * 15;           
+                    if(handEl) handEl.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
+                } else {
+                    if(handEl) handEl.style.transform = `translate(0px, 0px)`;
+                }
+            } else {
+                if(handEl) handEl.style.transform = `translate(0px, 0px)`;
+            }
+
+            updateEnvironment(delta);
+            updateChunks();
+            updateAI(delta);
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
